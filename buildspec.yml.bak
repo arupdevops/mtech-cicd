@@ -1,0 +1,34 @@
+version: 0.2
+
+env:
+  variables:
+    ECR_REPO: "292285526557.dkr.ecr.ap-south-1.amazonaws.com/mtech-cicd"
+    IMAGE_TAG_LATEST: "latest"
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO
+  build:
+    commands:
+      - echo Build started on `date`
+      - pip install pytest
+      - pytest --maxfail=1 --disable-warnings -q
+      - export COMMIT_COUNT=$(git rev-list --count HEAD)
+      - export IMAGE_TAG_V="v${COMMIT_COUNT}"
+      - echo "Using tags: $IMAGE_TAG_LATEST and $IMAGE_TAG_V"
+      - docker build -t flask-api .
+      - docker tag flask-api:latest $ECR_REPO:$IMAGE_TAG_LATEST
+      - docker tag flask-api:latest $ECR_REPO:$IMAGE_TAG_V
+  post_build:
+    commands:
+      - echo Pushing images to ECR...
+      - docker push $ECR_REPO:$IMAGE_TAG_LATEST
+      - docker push $ECR_REPO:$IMAGE_TAG_V
+      - printf '[{"name":"flask-api","imageUri":"%s:%s"}]' "$ECR_REPO" "$IMAGE_TAG_LATEST" > imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
+
