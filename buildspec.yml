@@ -25,7 +25,7 @@ phases:
     commands:
       - echo Pushing images to ECR...
       - docker push $ECR_REPO:$IMAGE_TAG_LATEST
-      - docker push $ECR_REPO:$IMAGE_TAG_V
+      - docker push $ECR_REPO:$IMAGE_TAG_LATEST
       - printf '[{"name":"flask-api","imageUri":"%s:%s"}]' "$ECR_REPO" "$IMAGE_TAG_LATEST" > imagedefinitions.json
 
 artifacts:
