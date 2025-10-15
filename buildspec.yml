@@ -2,30 +2,37 @@ version: 0.2
 
 env:
   variables:
+    # YOUR ECR repo (exact)
     ECR_REPO: "292285526557.dkr.ecr.ap-south-1.amazonaws.com/mtech-cicd"
     IMAGE_TAG_LATEST: "latest"
 
 phases:
   pre_build:
     commands:
-      - echo Logging in to Amazon ECR...
+      - echo "Logging in to Amazon ECR in $AWS_DEFAULT_REGION..."
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO
   build:
     commands:
-      - echo Build started on `date`
+      - echo "Build started on `date`"
+      - echo "Installing test deps..."
       - pip install pytest
+      - echo "Running tests..."
       - pytest --maxfail=1 --disable-warnings -q
+      - echo "Determining git commit count for semantic tag..."
       - export COMMIT_COUNT=$(git rev-list --count HEAD)
       - export IMAGE_TAG_V="v${COMMIT_COUNT}"
       - echo "Using tags: $IMAGE_TAG_LATEST and $IMAGE_TAG_V"
+      - echo "Building Docker image..."
       - docker build -t flask-api .
+      - echo "Tagging image for ECR..."
       - docker tag flask-api:latest $ECR_REPO:$IMAGE_TAG_LATEST
       - docker tag flask-api:latest $ECR_REPO:$IMAGE_TAG_V
   post_build:
     commands:
-      - echo Pushing images to ECR...
+      - echo "Pushing images to ECR..."
       - docker push $ECR_REPO:$IMAGE_TAG_LATEST
-      - docker push $ECR_REPO:$IMAGE_TAG_LATEST
+      - docker push $ECR_REPO:$IMAGE_TAG_V
+      - echo "Creating imagedefinitions.json for CodePipeline/ECS deploy..."
       - printf '[{"name":"flask-api","imageUri":"%s:%s"}]' "$ECR_REPO" "$IMAGE_TAG_LATEST" > imagedefinitions.json
 
 artifacts:
