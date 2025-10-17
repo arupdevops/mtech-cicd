@@ -11,41 +11,37 @@ env:
 phases:
   pre_build:
     commands:
-      - "echo Logging in to Amazon ECR in $AWS_REGION..."
+      - echo "=== PRE_BUILD ==="
       - "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO"
   build:
     commands:
-      - "echo Build started on $(date)"
-      - "echo Installing test deps..."
-      - "pip install pytest"
-      - "echo Running tests..."
-      - "pytest --maxfail=1 --disable-warnings -q"
-      - "echo Determining git commit count for semantic tag..."
-      - "export COMMIT_COUNT=$(git rev-list --count HEAD)"
-      - "export IMAGE_TAG_V=\"v${COMMIT_COUNT}\""
-      - "echo Using tags: $IMAGE_TAG_LATEST and $IMAGE_TAG_V"
-      - "echo Building Docker image..."
-      - "docker build -t flask-api ."
-      - "echo Tagging image for ECR..."
-      - "docker tag flask-api:latest \"$ECR_REPO:$IMAGE_TAG_LATEST\""
-      - "docker tag flask-api:latest \"$ECR_REPO:$IMAGE_TAG_V\""
+      - echo "=== BUILD START === $(date)"
+      - pip install pytest
+      - pytest --maxfail=1 --disable-warnings -q || { echo 'pytest failed'; exit 1; }
+      - export COMMIT_COUNT=$(git rev-list --count HEAD)
+      - export IMAGE_TAG_V="v${COMMIT_COUNT}"
+      - echo "TAGS: $IMAGE_TAG_LATEST $IMAGE_TAG_V"
+      - docker build -t flask-api .
+      - docker tag flask-api:latest "$ECR_REPO:$IMAGE_TAG_LATEST"
+      - docker tag flask-api:latest "$ECR_REPO:$IMAGE_TAG_V"
   post_build:
     commands:
-      - "echo Pushing images to ECR..."
-      - "docker push \"$ECR_REPO:$IMAGE_TAG_LATEST\""
-      - "docker push \"$ECR_REPO:$IMAGE_TAG_V\""
-      - "echo Creating imagedefinitions.json for CodePipeline/ECS deploy..."
-      - "printf '[{\"name\":\"flask-api\",\"imageUri\":\"%s:%s\"}]' \"$ECR_REPO\" \"$IMAGE_TAG_LATEST\" > imagedefinitions.json"
-      - "printf '{\"imageUri\":\"%s\",\"tag\":\"%s\"}\\n' \"$ECR_REPO\" \"$IMAGE_TAG_LATEST\" > latest_image.json"
-      - "echo Uploading latest_image.json to S3..."
-      - "aws s3 cp latest_image.json s3://$S3_BUCKET/latest/latest_image.json --region $AWS_REGION"
-      - |
-        # publish success message to SNS (CodeBuild environment variables available)
-        BUILD_STATUS='SUCCEEDED'
-        MESSAGE=\"Build successful: Project=$CODEBUILD_PROJECT Build=$CODEBUILD_BUILD_ID Commit=$CODEBUILD_RESOLVED_SOURCE_VERSION Image=$ECR_REPO:$IMAGE_TAG_LATEST\"
-        echo "Publishing success message to SNS: $MESSAGE"
-        aws sns publish --topic-arn $SNS_TOPIC_ARN --subject "✅ Build Success: $CODEBUILD_PROJECT" --message "$MESSAGE" --region $AWS_REGION
-
+      - echo "=== POST_BUILD START === $(date)"
+      - echo "Pushing images..."
+      - docker push "$ECR_REPO:$IMAGE_TAG_LATEST"
+      - docker push "$ECR_REPO:$IMAGE_TAG_V"
+      - echo "Creating imagedefinitions.json..."
+      - printf '[{"name":"flask-api","imageUri":"%s:%s"}]' "$ECR_REPO" "$IMAGE_TAG_LATEST" > imagedefinitions.json
+      - echo "Creating latest_image.json..."
+      - printf '{"imageUri":"%s","tag":"%s"}\n' "$ECR_REPO" "$IMAGE_TAG_LATEST" > latest_image.json
+      - echo "Contents of latest_image.json:"
+      - cat latest_image.json
+      - echo "Uploading latest_image.json to s3://$S3_BUCKET/latest/ ..."
+      - aws s3 cp latest_image.json s3://$S3_BUCKET/latest/latest_image.json --region $AWS_REGION
+      - echo "aws s3 cp exit: $?"
+      - echo "Publishing SNS message..."
+      - aws sns publish --topic-arn $SNS_TOPIC_ARN --subject "✅ Build Success: $CODEBUILD_PROJECT" --message "Build: $CODEBUILD_BUILD_ID Image: $ECR_REPO:$IMAGE_TAG_LATEST" --region $AWS_REGION
+      - echo "aws sns publish exit: $?"
 artifacts:
   files:
     - imagedefinitions.json
