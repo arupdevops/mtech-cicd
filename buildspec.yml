@@ -12,36 +12,56 @@ env:
 phases:
   pre_build:
     commands:
-      - "echo '=== PRE_BUILD ==='"
-      - "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO"
+      - echo "=== PRE_BUILD ==="
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+
   build:
     commands:
-      - "echo '=== BUILD START === $(date)'"
-      - "pip install pytest"
-      - "pytest --maxfail=1 --disable-warnings -q || { echo 'pytest failed'; exit 1; }"
-      - "export COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo '0')"
-      - "export IMAGE_TAG_V=\"v${COMMIT_COUNT}\""
-      - "echo 'TAGS: ' \"$IMAGE_TAG_LATEST\" \"$IMAGE_TAG_V\""
-      - "docker build -t flask-api ."
-      - "docker tag flask-api:latest \"$ECR_REPO:$IMAGE_TAG_LATEST\""
-      - "docker tag flask-api:latest \"$ECR_REPO:$IMAGE_TAG_V\""
+      - echo "=== BUILD START === $(date)"
+      - pip install pytest
+      - pytest --maxfail=1 --disable-warnings -q || { echo 'pytest failed'; exit 1; }
+      - export COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+      - export IMAGE_TAG_V="v${COMMIT_COUNT}"
+      - echo "TAGS: $IMAGE_TAG_LATEST $IMAGE_TAG_V"
+      - docker build -t flask-api .
+      - docker tag flask-api:latest "$ECR_REPO:$IMAGE_TAG_LATEST"
+      - docker tag flask-api:latest "$ECR_REPO:$IMAGE_TAG_V"
+
   post_build:
     commands:
-      - "echo '=== POST_BUILD START === $(date)'"
-      - "echo 'Pushing images...'"
-      - "docker push \"$ECR_REPO:$IMAGE_TAG_LATEST\""
-      - "docker push \"$ECR_REPO:$IMAGE_TAG_V\""
-      - "echo 'Creating imagedefinitions.json...'"
-      - "printf '[{\"name\":\"flask-api\",\"imageUri\":\"%s:%s\"}]' \"$ECR_REPO\" \"$IMAGE_TAG_LATEST\" > imagedefinitions.json"
-      - "echo 'Creating latest_image.json...'"
-      - "printf '{\"imageUri\":\"%s\",\"tag\":\"%s\"}\\n' \"$ECR_REPO\" \"$IMAGE_TAG_LATEST\" > latest_image.json"
-      - "echo 'Contents of latest_image.json:'"
-      - "cat latest_image.json"
-      - "echo 'Uploading latest_image.json to s3://$S3_BUCKET/latest/ ...'"
-      - "aws s3 cp latest_image.json s3://$S3_BUCKET/latest/latest_image.json --region $AWS_REGION || echo 's3 cp exit: '$?"
-      - "echo 'Publishing SNS message...'"
-      - "aws sns publish --topic-arn $SNS_TOPIC_ARN --subject \"✅ Build Success: $CODEBUILD_PROJECT\" --message \"Build: $CODEBUILD_BUILD_ID Image: $ECR_REPO:$IMAGE_TAG_LATEST\" --region $AWS_REGION || echo 'sns publish exit: '$?"
+      - echo "=== POST_BUILD START === $(date)"
+      - echo "Pushing images..."
+      - docker push "$ECR_REPO:$IMAGE_TAG_LATEST"
+      - docker push "$ECR_REPO:$IMAGE_TAG_V"
+      - echo "Creating imagedefinitions.json..."
+      - printf '[{"name":"flask-api","imageUri":"%s:%s"}]' "$ECR_REPO" "$IMAGE_TAG_LATEST" > imagedefinitions.json
+      - echo "Creating latest_image.json..."
+      - printf '{"imageUri":"%s","tag":"%s"}\n' "$ECR_REPO" "$IMAGE_TAG_LATEST" > latest_image.json
+      - echo "Contents of latest_image.json:"
+      - cat latest_image.json
+      - echo "Uploading latest_image.json to s3://$S3_BUCKET/latest/ ..."
+      - aws s3 cp latest_image.json s3://$S3_BUCKET/latest/latest_image.json --region $AWS_REGION || echo "s3 cp exit: $?"
+      - echo "Publishing SNS message for SUCCESS..."
+      - aws sns publish --topic-arn $SNS_TOPIC_ARN --subject "✅ Build Success: $CODEBUILD_PROJECT" --message "Build: $CODEBUILD_BUILD_ID Image: $ECR_REPO:$IMAGE_TAG_LATEST" --region $AWS_REGION || echo "sns publish exit: $?"
+
 artifacts:
   files:
     - imagedefinitions.json
+
+# 'finally' runs regardless of failure or success — use it to guarantee failure notifications
+finally:
+  commands:
+    - echo "=== FINALLY: check overall build result === $(date)"
+    - |
+      # CODEBUILD_BUILD_SUCCEEDING is "1" while still succeeding; if not 1 we treat as failure
+      if [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ]; then
+        echo "Build status: SUCCEEDED (already sent success SNS in post_build)."
+      else
+        echo "Build status: FAILED or partially failed — sending failure SNS..."
+        aws sns publish \
+          --topic-arn $SNS_TOPIC_ARN \
+          --subject "❌ Build Failed: $CODEBUILD_PROJECT" \
+          --message "Build: $CODEBUILD_BUILD_ID for project $CODEBUILD_PROJECT FAILED. Check CodeBuild/CodePipeline logs." \
+          --region $AWS_REGION || echo "sns publish exit: $?"
+      fi
 
