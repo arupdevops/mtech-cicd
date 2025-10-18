@@ -27,23 +27,29 @@ phases:
       - docker tag flask-api:latest "$ECR_REPO:$IMAGE_TAG_LATEST"
       - docker tag flask-api:latest "$ECR_REPO:$IMAGE_TAG_V"
 
-  post_build:
-    commands:
-      - echo "=== POST_BUILD START === $(date)"
-      - echo "Pushing images..."
-      - docker push "$ECR_REPO:$IMAGE_TAG_LATEST"
-      - docker push "$ECR_REPO:$IMAGE_TAG_V"
-      - echo "Creating imagedefinitions.json..."
-      - printf '[{"name":"flask-api","imageUri":"%s:%s"}]' "$ECR_REPO" "$IMAGE_TAG_LATEST" > imagedefinitions.json
-      - echo "Creating latest_image.json..."
-      - printf '{"imageUri":"%s","tag":"%s"}\n' "$ECR_REPO" "$IMAGE_TAG_LATEST" > latest_image.json
-      - echo "Contents of latest_image.json:"
-      - cat latest_image.json
-      - echo "Uploading latest_image.json to s3://$S3_BUCKET/latest/ ..."
-      - aws s3 cp latest_image.json "s3://$S3_BUCKET/latest/latest_image.json" --region "$AWS_REGION" || echo "s3 cp exit: $?"
-      - echo "Publish SUCCESS message to SNS (shell var used so YAML doesn't parse colons)..."
-      - MSG="Build: $CODEBUILD_BUILD_ID Image: ${ECR_REPO}:${IMAGE_TAG_LATEST}"
-      - aws sns publish --topic-arn "$SNS_TOPIC_ARN" --subject "Build Success: $CODEBUILD_PROJECT" --message "$MSG" --region "$AWS_REGION" || echo "sns publish exit: $?"
+post_build:
+  commands:
+    - echo "=== POST_BUILD START === $(date)"
+    - echo "Pushing images..."
+    - docker push "$ECR_REPO:$IMAGE_TAG_LATEST"
+    - docker push "$ECR_REPO:$IMAGE_TAG_V"
+    - echo "Creating imagedefinitions.json..."
+    - printf '[{"name":"flask-api","imageUri":"%s:%s"}]' "$ECR_REPO" "$IMAGE_TAG_LATEST" > imagedefinitions.json
+    - echo "Creating latest_image.json..."
+    - printf '{"imageUri":"%s","tag":"%s"}\n' "$ECR_REPO" "$IMAGE_TAG_LATEST" > latest_image.json
+    - echo "Contents of latest_image.json:"
+    - cat latest_image.json
+    - echo "Uploading latest_image.json to s3://$S3_BUCKET/latest/ ..."
+    - aws s3 cp latest_image.json "s3://$S3_BUCKET/latest/latest_image.json" --region "$AWS_REGION" || echo "s3 cp exit: $?"
+    - echo "Writing a tiny publish script and executing it (this avoids YAML parsing issues)..."
+    - |
+      cat > /tmp/publish_notify.sh <<'SH'
+      #!/bin/sh
+      MSG="Build: $CODEBUILD_BUILD_ID Image: $ECR_REPO:$IMAGE_TAG_LATEST"
+      aws sns publish --topic-arn "$SNS_TOPIC_ARN" --subject "Build Success: $CODEBUILD_PROJECT" --message "$MSG" --region "$AWS_REGION" || echo "sns publish exit: $?"
+      SH
+    - chmod +x /tmp/publish_notify.sh
+    - /tmp/publish_notify.sh
 
 artifacts:
   files:
