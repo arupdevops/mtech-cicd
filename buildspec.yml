@@ -35,8 +35,8 @@ phases:
       - docker push "$ECR_REPO:$IMAGE_TAG_V"
       - echo "Creating imagedefinitions.json..."
       - printf '[{"name":"flask-api","imageUri":"%s:%s"}]' "$ECR_REPO" "$IMAGE_TAG_LATEST" > imagedefinitions.json
-      - echo "Creating latest_image.json..."
-      - printf '{"imageUri":"%s","tag":"%s"}\n' "$ECR_REPO" "$IMAGE_TAG_LATEST" > latest_image.json
+      - echo "Creating latest_image.json (YAML-safe) ..."
+      - echo "{\"imageUri\":\"$ECR_REPO\",\"tag\":\"$IMAGE_TAG_LATEST\"}" > latest_image.json
       - echo "Contents of latest_image.json:"
       - cat latest_image.json
       - echo "Uploading latest_image.json to s3://$S3_BUCKET/latest/ ..."
@@ -47,14 +47,4 @@ phases:
 artifacts:
   files:
     - imagedefinitions.json
-
-finally:
-  commands:
-    - echo "=== FINALLY: check overall build result === $(date)"
-    - if [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ]; then
-        echo "Build succeeded; success SNS already attempted.";
-      else
-        echo "Build failed or partially failed — sending failure SNS...";
-        aws sns publish --topic-arn "$SNS_TOPIC_ARN" --subject "❌ Build Failed: $CODEBUILD_PROJECT" --message "Build: $CODEBUILD_BUILD_ID for project $CODEBUILD_PROJECT FAILED. Check CodeBuild/CodePipeline logs." --region "$AWS_REGION" || echo "sns publish exit: $?";
-      fi
 
