@@ -1,5 +1,3 @@
-# 1. Save a robust buildspec locally
-cat > buildspec.yml <<'EOF'
 version: 0.2
 
 env:
@@ -16,6 +14,7 @@ phases:
     commands:
       - echo "=== PRE_BUILD ==="
       - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+
   build:
     commands:
       - echo "=== BUILD START === $(date)"
@@ -27,6 +26,7 @@ phases:
       - docker build -t flask-api .
       - docker tag flask-api:latest "$ECR_REPO:$IMAGE_TAG_LATEST"
       - docker tag flask-api:latest "$ECR_REPO:$IMAGE_TAG_V"
+
   post_build:
     commands:
       - echo "=== POST_BUILD START === $(date)"
@@ -43,8 +43,8 @@ phases:
       - aws s3 cp latest_image.json s3://$S3_BUCKET/latest/latest_image.json --region $AWS_REGION || echo "s3 cp exit: $?"
       - echo "Publishing SNS message..."
       - aws sns publish --topic-arn $SNS_TOPIC_ARN --subject "✅ Build Success: $CODEBUILD_PROJECT" --message "Build: $CODEBUILD_BUILD_ID Image: $ECR_REPO:$IMAGE_TAG_LATEST" --region $AWS_REGION || echo "sns publish exit: $?"
+
 artifacts:
   files:
     - imagedefinitions.json
-EOF
 
