@@ -12,12 +12,14 @@ env:
 phases:
   pre_build:
     commands:
-      - echo "=== PRE_BUILD ==="
+      - echo "=== PRE_BUILD START ==="
       - aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPO"
 
   build:
     commands:
       - echo "=== BUILD START === $(date)"
+      - echo "💥 INTENTIONAL FAILURE FOR DEMO 💥"
+      - exit 1   # <== This line forces the pipeline to fail here for demo purposes
       - pip install pytest
       - pytest --maxfail=1 --disable-warnings -q || { echo 'pytest failed'; exit 1; }
       - export COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
@@ -27,31 +29,28 @@ phases:
       - docker tag flask-api:latest "$ECR_REPO:$IMAGE_TAG_LATEST"
       - docker tag flask-api:latest "$ECR_REPO:$IMAGE_TAG_V"
 
-post_build:
-  commands:
-    - echo "=== POST_BUILD START === $(date)"
-    - echo "Pushing images..."
-    - docker push "$ECR_REPO:$IMAGE_TAG_LATEST"
-    - docker push "$ECR_REPO:$IMAGE_TAG_V"
-    - echo "Creating imagedefinitions.json..."
-    - printf '[{"name":"flask-api","imageUri":"%s:%s"}]' "$ECR_REPO" "$IMAGE_TAG_LATEST" > imagedefinitions.json
-    - echo "Creating latest_image.json..."
-    - printf '{"imageUri":"%s","tag":"%s"}\n' "$ECR_REPO" "$IMAGE_TAG_LATEST" > latest_image.json
-    - echo "Contents of latest_image.json:"
-    - cat latest_image.json
-    - echo "Uploading latest_image.json to s3://$S3_BUCKET/latest/ ..."
-    - aws s3 cp latest_image.json "s3://$S3_BUCKET/latest/latest_image.json" --region "$AWS_REGION" || echo "s3 cp exit: $?"
-    - echo "Writing a tiny publish script and executing it (this avoids YAML parsing issues)..."
-    - |
-      cat > /tmp/publish_notify.sh <<'SH'
-      #!/bin/sh
-      MSG="Build: $CODEBUILD_BUILD_ID Image: $ECR_REPO:$IMAGE_TAG_LATEST"
-      aws sns publish --topic-arn "$SNS_TOPIC_ARN" --subject "Build Success: $CODEBUILD_PROJECT" --message "$MSG" --region "$AWS_REGION" || echo "sns publish exit: $?"
-      SH
-    - chmod +x /tmp/publish_notify.sh
-    - /tmp/publish_notify.sh
+  post_build:
+    commands:
+      - echo "=== POST_BUILD === $(date)"
+      - echo "This section will NOT execute since the build intentionally failed."
+      - echo "If it did, it would push to ECR and upload imagedefinitions.json"
 
 artifacts:
   files:
     - imagedefinitions.json
+
+finally:
+  commands:
+    - echo "=== FINALLY: Sending SNS notification if build failed === $(date)"
+    - if [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ]; then
+        echo "✅ Build succeeded (unexpected in demo)";
+        MSG="Build succeeded unexpectedly for $CODEBUILD_PROJECT ($CODEBUILD_BUILD_ID)";
+      else
+        echo "❌ Build failed intentionally for demo";
+        MSG="Intentional demo failure: $CODEBUILD_PROJECT ($CODEBUILD_BUILD_ID)";
+      fi
+    - aws sns publish --topic-arn "$SNS_TOPIC_ARN" \
+        --subject "CodeBuild Result: $CODEBUILD_PROJECT" \
+        --message "$MSG" \
+        --region "$AWS_REGION" || echo "SNS publish failed"
 
