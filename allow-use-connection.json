@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowUseSpecificCodeStarConnection",
+      "Effect": "Allow",
+      "Action": [
+        "codestar-connections:UseConnection",
+        "codestar-connections:GetConnection"
+      ],
+      "Resource": "arn:aws:codeconnections:ap-south-1:292285526557:connection/7923d8f7-c8a0-4238-851d-e8d673fa0203"
+    }
+  ]
+}

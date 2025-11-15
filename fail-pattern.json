@@ -1,0 +1,10 @@
+{
+  "source": ["aws.codepipeline","aws.codebuild"],
+  "detail-type": [
+    "CodePipeline Pipeline Execution State Change",
+    "CodeBuild Build State Change"
+  ],
+  "detail": {
+    "state": ["FAILED"]
+  }
+}

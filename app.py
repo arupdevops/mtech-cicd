@@ -6,7 +6,7 @@ app = Flask(__name__)
 
 def get_project_details():
     return {
-        "project_name": os.environ.get("PROJECT_NAME", "MTech Flask CI/CD Pipeline"),
+        "project_name": os.environ.get("PROJECT_NAME", "MTech Flask CI/CD Pipeline01"),
         "description": os.environ.get("PROJECT_DESCRIPTION", "Fully automated AWS ECS CI/CD deployment for a Flask API using CodeBuild, CodePipeline, and Docker."),
         "cluster": os.environ.get("CLUSTER_NAME", "mtech-cicd-cluster"),
         "service": os.environ.get("SERVICE_NAME", "flask-api-service"),

@@ -1,0 +1,16 @@
+{
+  "name": "mtech-cicd-github-webhook",
+  "targetPipeline": "mtech-cicd-pipeline",
+  "targetAction": "CodeConnections",
+  "filters": [
+    {
+      "jsonPath": "$.ref",
+      "matchEquals": "refs/heads/main"
+    }
+  ],
+  "authentication": "GITHUB_HMAC",
+  "authenticationConfiguration": {
+    "SecretToken": "SOME_LONG_RANDOM_SECRET_ChangeMe123!"
+  }
+}
+
